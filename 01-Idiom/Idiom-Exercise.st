@@ -36,16 +36,16 @@ test02RemovingCustomerShouldNotTakeMoreThan100Milliseconds
 	
 ! !
 
-!IdiomTest methodsFor: 'testing' stamp: 'a 4/20/2017 21:23:58'!
+!IdiomTest methodsFor: 'testing' stamp: 'AI 4/24/2017 23:44:52'!
 test03CanNotAddACustomerWithEmptyName 
 
 	| customerBook |
 			
 	customerBook := CustomerBook new.
 	
-	self testearQue: [customerBook addCustomerNamed: ''.] arrojaExcepcionDeTipo: Error conMensajeError: CustomerBook customerCanNotBeEmptyErrorMessage yCumplePostcondiciones: [ customerBook isEmpty ].! !
+	self testearQue: [customerBook addCustomerNamed: ''.] arrojaExcepcionDeTipo: Error yCumplePostcondiciones: [ :anError | customerBook isEmpty & anError messageText = CustomerBook customerCanNotBeEmptyErrorMessage.]! !
 
-!IdiomTest methodsFor: 'testing' stamp: 'a 4/20/2017 21:30:53'!
+!IdiomTest methodsFor: 'testing' stamp: 'AI 4/24/2017 23:44:28'!
 test04CanNotRemoveAndInvalidCustomer
 	
 	| customerBook johnLennon |
@@ -54,23 +54,15 @@ test04CanNotRemoveAndInvalidCustomer
 	johnLennon := 'John Lennon'.
 	customerBook addCustomerNamed: johnLennon.
 
-	"self testearQue: [ customerBook removeCustomerNamed: 'Paul McCartney'. ] arrojaExcepcionDeTIpo: NotFound conMensajeError: "
-	[ customerBook removeCustomerNamed: 'Paul McCartney'.
-	self fail ]
-		on: NotFound 
-		do: [ :anError | 
-			self assert: customerBook numberOfCustomers = 1.
-			self assert: (customerBook includesCustomerNamed: johnLennon) ]
-			! !
+	self testearQue: [ customerBook removeCustomerNamed: 'Paul McCartney'. ] arrojaExcepcionDeTipo: NotFound yCumplePostcondiciones: [ :anError | customerBook numberOfCustomers = 1 & customerBook includesCustomerNamed: johnLennon].! !
 
-!IdiomTest methodsFor: 'testing' stamp: 'a 4/20/2017 21:20:57'!
-testearQue: colaborationToTest arrojaExcepcionDeTipo: tipoExcepcion conMensajeError: errorMessage  yCumplePostcondiciones: postcondicionesBlock
+!IdiomTest methodsFor: 'testing' stamp: 'AI 4/24/2017 23:14:29'!
+testearQue: colaborationToTest arrojaExcepcionDeTipo: tipoExcepcion yCumplePostcondiciones: postcondicionesBlock
 	[ colaborationToTest value.
 	self fail ]
 		on: tipoExcepcion
 		do: [ :anError | 
-			self assert: anError messageText = errorMessage.
-			self assert: postcondicionesBlock value.]! !
+			self assert: (postcondicionesBlock value: anError).]! !
 
 !IdiomTest methodsFor: 'testing' stamp: 'a 4/20/2017 20:51:16'!
 testearSi: aBlock tardaMenosMilisegundosQue: unaCantidadDeMilisegundos
