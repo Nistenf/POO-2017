@@ -11,10 +11,30 @@ Interval subclass: #MeasureInterval
 MeasureInterval class
 	instanceVariableNames: ''!
 
+!MeasureInterval class methodsFor: 'errors' stamp: 'a 6/8/2017 16:59:19'!
+errorDifferentUnitTypes
+	^ 'No se pueden crear intervalos entre unidades de distintos tipos'! !
+
+
 !MeasureInterval class methodsFor: 'instance creation' stamp: 'a 6/6/2017 21:13:14'!
 from: startMeasure to: endMeasure
 	"De manera arbitraria hemos decidido que el step por default sea 1 en la unidad del inicio del intervalo"
 	^ self from: startMeasure to: endMeasure by: (Measure withUnit: startMeasure unit andValue: 1).  ! !
+
+!MeasureInterval class methodsFor: 'instance creation' stamp: 'a 6/8/2017 17:06:39'!
+from: startMeasure to: endMeasure by: stepMeasure
+	| count end |
+	
+	(startMeasure unit type = endMeasure unit type and: [ endMeasure unit type = stepMeasure unit type ]) ifFalse: [ self error: self errorDifferentUnitTypes ] .
+	count _ endMeasure - startMeasure / stepMeasure + 1.
+	(count closeTo: count rounded)
+		ifTrue: [
+			count _ count rounded.
+			end _ endMeasure ]
+		ifFalse: [
+			count _ count truncated.
+			end _ count-1 * stepMeasure + startMeasure ].
+	^self from: startMeasure to: end count: count! !
 
 
 !classDefinition: #MeasureTests category: #'Measure-Solution'!
@@ -283,10 +303,10 @@ test28AThousandMilimetersEqualOneMeter
 	
 	self assert: milMilimetros = unMetro.! !
 
-!MeasureTests methodsFor: 'tests' stamp: 'a 6/6/2017 20:24:26'!
+!MeasureTests methodsFor: 'tests' stamp: 'a 6/8/2017 17:53:19'!
 test29CanAddNewUnit
 	self shouldnt: [	
-	Unit createWithName: 'lightyear' andType: 'distancia' andConversionRuleToReferenceUnit: [ :aValue | aValue * 9460730472580800 ] andConversionRuleFromReferenceUnit:  [:aValue | aValue / 9460730472580800 ] ]
+	SimpleUnit createWithName: 'lightyear' andType: 'distancia' andConversionRuleToReferenceUnit: [ :aValue | aValue * 9460730472580800 ] andConversionRuleFromReferenceUnit:  [:aValue | aValue / 9460730472580800 ] ]
 	raise: Error - MessageNotUnderstood .! !
 
 !MeasureTests methodsFor: 'tests' stamp: 'a 5/30/2017 18:36:30'!
@@ -378,6 +398,10 @@ adaptToInteger: anInteger andSend: aSymbol
 adaptToNumber: aNumber andSend: aSymbol 
 	self shouldBeImplemented! !
 
+!Measure methodsFor: 'as yet unclassified' stamp: 'a 6/8/2017 18:51:34'!
+asString
+	^ amount asString, ' ', unit asString.! !
+
 !Measure methodsFor: 'as yet unclassified' stamp: 'a 5/23/2017 20:44:16'!
 isZero
 	^ false.! !
@@ -398,22 +422,41 @@ to: aMeasure by: aStep
 	^ collection.! !
 
 
-!Measure methodsFor: 'arithmetic' stamp: 'a 6/1/2017 20:15:29'!
-* aNumber
-	^ self class withMeters: amount * aNumber.! !
+!Measure methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:16:43'!
+* anObject
+	
+	self doWIthOperator: anObject 
+	ifNumber: [ ^ Measure withUnit: unit  andValue: amount * anObject ]
+	ifMeasure: [ ^ Measure withUnit: unit * anObject unit andValue: amount * anObject amount]
+	ifUnit: [ anObject class = Unit ifTrue:[	^ self * Measure withUnit: anObject andValue: 1 ]]
+	otherwiseRaise: self class errorInvalidProduct.! !
 
-!Measure methodsFor: 'arithmetic' stamp: 'a 6/1/2017 20:23:21'!
+!Measure methodsFor: 'arithmetic' stamp: 'a 6/8/2017 17:10:20'!
 + anObject
-	self class = anObject class ifTrue: [^ self class withMeters: amount + anObject amount ].
+	self class = anObject class ifTrue: [^ self class withUnit: self unit andValue: (self unit convertFromReferenceUnit: self amountInReferenceUnit + anObject  amountInReferenceUnit )].
 	^ self error: self class canOnlySumMeasuresError .! !
 
-!Measure methodsFor: 'arithmetic' stamp: 'a 6/1/2017 20:23:51'!
-- aMeasure 
-	^ self class withMeters: amount - aMeasure amount.! !
+!Measure methodsFor: 'arithmetic' stamp: 'a 6/8/2017 17:10:56'!
+- anObject
+	self class = anObject class ifTrue: [^ self class withUnit: self unit andValue: (self unit convertFromReferenceUnit: self amountInReferenceUnit - anObject  amountInReferenceUnit )].
+	^ self error: self class canOnlySubstractMeasuresError.! !
 
-!Measure methodsFor: 'arithmetic' stamp: 'a 6/1/2017 20:23:35'!
-/ aNumber 
-	^ self class withMeters: amount / aNumber.! !
+!Measure methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:15:34'!
+/ anObject
+
+	self doWIthOperator: anObject
+	ifNumber: [ ^ Measure withUnit: unit  andValue: amount / anObject ]
+	ifMeasure: [^ Measure withUnit: unit / anObject unit andValue: amount / anObject amount]
+	ifUnit: [ anObject class = Unit ifTrue: [^ self / Measure withUnit: anObject andValue: 1 ] ] 
+	otherwiseRaise: self class errorInvalidDivision.! !
+
+!Measure methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:13:50'!
+doWIthOperator: anOperator ifNumber: numberBlock ifMeasure: measureBlock ifUnit: unitBlock otherwiseRaise: aString	
+	
+	Measure = anOperator class ifTrue: measureBlock.
+	Unit = anOperator class ifTrue: unitBlock.
+	anOperator isNumber ifTrue: numberBlock.
+	^self error: aString.! !
 
 "-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- "!
 
@@ -421,9 +464,21 @@ to: aMeasure by: aStep
 Measure class
 	instanceVariableNames: 'conversionRules unit'!
 
+!Measure class methodsFor: 'errors' stamp: 'a 6/8/2017 17:11:09'!
+canOnlySubstractMeasuresError
+	^ 'A una measure solo se le pueden restar measures'.! !
+
 !Measure class methodsFor: 'errors' stamp: 'a 5/23/2017 21:10:25'!
 canOnlySumMeasuresError
 	^ 'A una measure solo se le pueden sumar measures'.! !
+
+!Measure class methodsFor: 'errors' stamp: 'a 6/8/2017 17:34:38'!
+errorInvalidDivision
+	^ 'Una Measure solo se puede dividir por otra Measure, una Unit o un numero'! !
+
+!Measure class methodsFor: 'errors' stamp: 'a 6/8/2017 17:40:09'!
+errorInvalidProduct
+	^ 'Una Measure solo se puede multiplicar por otra Measure, una Unit o un numero'! !
 
 !Measure class methodsFor: 'errors' stamp: 'a 6/6/2017 20:27:08'!
 errorTypeAlreadyHasAReferenceUnit
@@ -501,58 +556,232 @@ zeroMeters
 
 !classDefinition: #Unit category: #'Measure-Solution'!
 Object subclass: #Unit
-	instanceVariableNames: 'referenceUnit name conversionRuleToReferenceUnit conversionRuleFromReferenceUnit type'
-	classVariableNames: 'UnitTypes'
+	instanceVariableNames: ''
+	classVariableNames: ''
 	poolDictionaries: ''
 	category: 'Measure-Solution'!
 
-!Unit methodsFor: 'initialization' stamp: 'a 6/6/2017 20:10:10'!
+!Unit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 17:59:06'!
+* anObject
+	self subclassResponsibility 
+! !
+
+!Unit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 17:58:36'!
++ anObject
+	self subclassResponsibility 
+! !
+
+!Unit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 17:59:04'!
+- anObject
+	self subclassResponsibility 
+! !
+
+!Unit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 17:59:07'!
+/ anObject
+	self subclassResponsibility 
+! !
+
+!Unit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:17:01'!
+doWIthOperator: anOperator ifNumber: numberBlock ifMeasure: measureBlock ifUnit: unitBlock otherwiseRaise: aString	
+	
+	Measure = anOperator class ifTrue: measureBlock.
+	Unit = anOperator class ifTrue: unitBlock.
+	anOperator isNumber ifTrue: numberBlock.
+	^self error: aString.! !
+
+
+!classDefinition: #CompoundUnit category: #'Measure-Solution'!
+Unit subclass: #CompoundUnit
+	instanceVariableNames: 'denominator numerator'
+	classVariableNames: ''
+	poolDictionaries: ''
+	category: 'Measure-Solution'!
+
+!CompoundUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:53:57'!
+* anObject
+	self doWIthOperator: anObject
+	ifNumber: [ ^Measure withUnit: self andValue: anObject ]
+	ifMeasure: [ ^Measure withUnit: anObject unit * self andValue: anObject amount]
+	ifUnit: [ ^anObject multiplyByCompoundUnit: self ]
+	otherwiseRaise: self class errorInvalidOperators.! !
+
+!CompoundUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:59:39'!
++ anObject
+	self doWIthOperator: anObject
+	ifNumber: [ ^ self asString, ' + ', anObject asString ]
+	ifMeasure: [ ^ self asString, ' + ', anObject asString ]
+	ifUnit: [ ^ self asString, ' + ', anObject asString ]
+	otherwiseRaise: self class errorInvalidOperators.! !
+
+!CompoundUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:59:51'!
+- anObject
+	self doWIthOperator: anObject
+	ifNumber: [ ^ self asString, ' - ', anObject asString ]
+	ifMeasure: [ ^ self asString, ' - ', anObject asString ]
+	ifUnit: [ ^ self asString, ' - ', anObject asString ]
+	otherwiseRaise: self class errorInvalidOperators.! !
+
+!CompoundUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:57:09'!
+/ anObject
+	self doWIthOperator: anObject
+	ifNumber: [ ^ self * (1 / anObject) ]
+	ifMeasure: [ ^ self * (1 / anObject)]
+	ifUnit: [ ^anObject divideCompoundUnit: self ]
+	otherwiseRaise: self class errorInvalidOperators.! !
+
+!CompoundUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:58:12'!
+divideCompoundUnit: aCompoundUnit
+	CompoundUnit  createWithNumerator: ( denominator addAll: aCompoundUnit numerator ) andDenominator: (numerator addAll: aCompoundUnit denominator ).! !
+
+!CompoundUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:49:01'!
+divideSimpleUnit: aSimpleUnit
+	CompoundUnit  createWithNumerator: ( denominator add: aSimpleUnit ) andDenominator: numerator.! !
+
+!CompoundUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:54:58'!
+multiplyByCompoundUnit: aCompoundUnit
+	CompoundUnit  createWithNumerator: (numerator addAll: aCompoundUnit numerator ) andDenominator: (denominator addAll: aCompoundUnit denominator ).! !
+
+!CompoundUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:27:17'!
+multiplyBySimpleUnit: aSimpleUnit
+	CompoundUnit  createWithNumerator: (numerator add: aSimpleUnit ) andDenominator: denominator.! !
+
+
+!CompoundUnit methodsFor: 'initialization' stamp: 'a 6/8/2017 18:32:46'!
+initializeWithNumerator: numeratorCollection andDenominator: denominatorCollecion.
+	numerator := numeratorCollection difference: denominatorCollecion .
+	denominator := denominatorCollecion difference: numeratorCollection .! !
+
+"-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- "!
+
+!classDefinition: 'CompoundUnit class' category: #'Measure-Solution'!
+CompoundUnit class
+	instanceVariableNames: ''!
+
+!CompoundUnit class methodsFor: 'instance creation' stamp: 'a 6/8/2017 18:29:46'!
+createWithNumerator: numeratorCollection andDenominator: denominatorCollecion
+	^ self new initializeWithNumerator: numeratorCollection andDenominator: denominatorCollecion.! !
+
+
+!classDefinition: #SimpleUnit category: #'Measure-Solution'!
+Unit subclass: #SimpleUnit
+	instanceVariableNames: 'referenceUnit name conversionRuleToReferenceUnit conversionRuleFromReferenceUnit type'
+	classVariableNames: 'SimpleUnitTypes'
+	poolDictionaries: ''
+	category: 'Measure-Solution'!
+
+!SimpleUnit methodsFor: 'initialization' stamp: 'a 6/6/2017 20:10:10'!
 initializeWithName: aName andType: aTypeName.
 	name := aName.
 	type := aTypeName.
 	conversionRuleToReferenceUnit := [:anAmount | anAmount ].
 	conversionRuleFromReferenceUnit := [ :anAmount | anAmount ].! !
 
-!Unit methodsFor: 'initialization' stamp: 'a 6/6/2017 20:03:06'!
+!SimpleUnit methodsFor: 'initialization' stamp: 'a 6/8/2017 17:56:42'!
 initializeWithName: aName andType: aTypeName
 	andConversionRuleToReferenceUnit: aConversionRuleToReferenceUnit andConversionRuleFromReferenceUnit: aConversionRuleFromReferenceUnit.
 	
 	
 	name := aName.
 	type := aTypeName.
-	referenceUnit := UnitTypes at: type ifAbsent: [ self error: self class errorNoReferenceUnitForUnitType ].
+	referenceUnit := SimpleUnitTypes at: type ifAbsent: [ self error: self class errorNoReferenceUnitForUnitType ].
 	conversionRuleToReferenceUnit := aConversionRuleToReferenceUnit .
 	conversionRuleFromReferenceUnit := aConversionRuleFromReferenceUnit .! !
 
+!SimpleUnit methodsFor: 'initialization' stamp: 'a 6/8/2017 18:55:45'!
+multiplyByCompoundUnit: aCompoundUnit
+	CompoundUnit  createWithNumerator: ({self} addAll: aCompoundUnit numerator ) andDenominator: (aCompoundUnit denominator ).! !
 
-!Unit methodsFor: 'accessing' stamp: 'a 6/6/2017 20:35:16'!
+
+!SimpleUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:34:02'!
+* anObject
+	self doWIthOperator: anObject
+	ifNumber: [ ^Measure withUnit: self andValue: anObject ]
+	ifMeasure: [ ^Measure withUnit: anObject unit * self andValue: anObject amount]
+	ifUnit: [ ^anObject multiplyBySimpleUnit: self ]
+	otherwiseRaise: self class errorInvalidOperators.! !
+
+!SimpleUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:52:21'!
++ anObject
+	self doWIthOperator: anObject
+	ifNumber: [ ^ self asString, ' + ', anObject asString ]
+	ifMeasure: [ ^ self asString, ' + ', anObject asString ]
+	ifUnit: [ ^ self asString, ' + ', anObject asString ]
+	otherwiseRaise: self class errorInvalidOperators.! !
+
+!SimpleUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:52:45'!
+- anObject
+	self doWIthOperator: anObject
+	ifNumber: [ ^ self asString, ' - ', anObject asString ]
+	ifMeasure: [ ^ self asString, ' - ', anObject asString ]
+	ifUnit: [ ^ self asString, ' - ', anObject asString ]
+	otherwiseRaise: self class errorInvalidOperators.! !
+
+!SimpleUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:44:32'!
+/ anObject
+	self doWIthOperator: anObject
+	ifNumber: [ ^ self * (1 / anObject) ]
+	ifMeasure: [ ^ self * (1 / anObject) ]
+	ifUnit: [ anObject divideSimpleUnit: self ]
+	otherwiseRaise: self class errorInvalidOperators.! !
+
+!SimpleUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:59:03'!
+divideCompoundUnit: aCompoundUnit
+	CompoundUnit  createWithNumerator: aCompoundUnit numerator andDenominator: ({self} addAll: aCompoundUnit denominator ).! !
+
+!SimpleUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:46:24'!
+divideSimpleUnit: aSimpleUnit
+	CompoundUnit  createWithNumerator: { aSimpleUnit } andDenominator: {self}.! !
+
+!SimpleUnit methodsFor: 'arithmetic' stamp: 'a 6/8/2017 18:25:32'!
+multiplyBySimpleUnit: aSimpleUnit
+	CompoundUnit  createWithNumerator: { self. aSimpleUnit.} andDenominator: {}.! !
+
+
+!SimpleUnit methodsFor: 'accessing' stamp: 'a 6/8/2017 17:08:49'!
+convertFromReferenceUnit: aValue 
+	^ conversionRuleFromReferenceUnit value: aValue.! !
+
+!SimpleUnit methodsFor: 'accessing' stamp: 'a 6/6/2017 20:35:16'!
 convertToReferenceUnit: aValue 
 	^ conversionRuleToReferenceUnit value: aValue.! !
 
-!Unit methodsFor: 'accessing' stamp: 'a 6/1/2017 20:37:54'!
+!SimpleUnit methodsFor: 'accessing' stamp: 'a 6/1/2017 20:37:54'!
 name
+	^ name.! !
+
+!SimpleUnit methodsFor: 'accessing' stamp: 'a 6/8/2017 16:57:47'!
+type
+	^ type.! !
+
+
+!SimpleUnit methodsFor: 'as yet unclassified' stamp: 'a 6/8/2017 18:52:30'!
+asString
 	^ name.! !
 
 "-- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- -- "!
 
-!classDefinition: 'Unit class' category: #'Measure-Solution'!
-Unit class
+!classDefinition: 'SimpleUnit class' category: #'Measure-Solution'!
+SimpleUnit class
 	instanceVariableNames: ''!
 
-!Unit class methodsFor: 'errors' stamp: 'a 6/6/2017 20:04:18'!
+!SimpleUnit class methodsFor: 'errors' stamp: 'a 6/8/2017 18:23:57'!
+errorInvalidOperators
+	^ 'Solo se puede operar entre numeros, Measures y Units'! !
+
+!SimpleUnit class methodsFor: 'errors' stamp: 'a 6/6/2017 20:04:18'!
 errorNoReferenceUnitForUnitType
 	^ 'No existe una unidad de referencia para el tipo. Creala.'! !
 
 
-!Unit class methodsFor: 'instance creation' stamp: 'a 6/6/2017 20:28:39'!
+!SimpleUnit class methodsFor: 'instance creation' stamp: 'a 6/8/2017 17:56:50'!
 createWithName: aName andType: aTypeName
 	| aUnit |
 	aUnit := self new initializeWithName: aName andType: aTypeName.
-	UnitTypes at: aTypeName ifPresent: [ :assoc | self error: self errorTypeAlreadyHasAReferenceUnit] ifAbsent: [ UnitTypes at: aTypeName put: aUnit ].
+	SimpleUnitTypes at: aTypeName ifPresent: [ :assoc | self error: self errorTypeAlreadyHasAReferenceUnit] ifAbsent: [ SimpleUnitTypes at: aTypeName put: aUnit ].
 	Smalltalk at: aName asSymbol put: aUnit.
 	^ aUnit.! !
 
-!Unit class methodsFor: 'instance creation' stamp: 'a 6/6/2017 19:57:52'!
+!SimpleUnit class methodsFor: 'instance creation' stamp: 'a 6/6/2017 19:57:52'!
 createWithName: aName andType: aTypeName 
 andConversionRuleToReferenceUnit: aConversionRuleToReferenceUnit andConversionRuleFromReferenceUnit: aConversionRuleFromReferenceUnit
 
@@ -563,11 +792,11 @@ andConversionRuleToReferenceUnit: aConversionRuleToReferenceUnit andConversionRu
 	^ aUnit.! !
 
 
-!Unit class methodsFor: 'class initialization' stamp: 'a 6/6/2017 20:29:23'!
+!SimpleUnit class methodsFor: 'class initialization' stamp: 'a 6/8/2017 17:56:54'!
 initialize
-	UnitTypes := Dictionary new.
-	Unit createWithName: 'metro' andType: 'distancia'.
-	Unit createWithName: 'centimetro' andType: 'distancia' andConversionRuleToReferenceUnit: [:anAmount | anAmount / 100] andConversionRuleFromReferenceUnit: [:anAmount | anAmount * 100].
-	Unit createWithName: 'milimetro' andType: 'distancia' andConversionRuleToReferenceUnit: [:anAmount | anAmount / 1000] andConversionRuleFromReferenceUnit: [:anAmount | anAmount * 1000].! !
+	SimpleUnitTypes := Dictionary new.
+	SimpleUnit createWithName: 'metro' andType: 'distancia'.
+	SimpleUnit createWithName: 'centimetro' andType: 'distancia' andConversionRuleToReferenceUnit: [:anAmount | anAmount / 100] andConversionRuleFromReferenceUnit: [:anAmount | anAmount * 100].
+	SimpleUnit createWithName: 'milimetro' andType: 'distancia' andConversionRuleToReferenceUnit: [:anAmount | anAmount / 1000] andConversionRuleFromReferenceUnit: [:anAmount | anAmount * 1000].! !
 
-Unit initialize!
+SimpleUnit initialize!
